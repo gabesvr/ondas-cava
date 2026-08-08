@@ -6,14 +6,11 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QColor>
-#include <QMouseEvent>
 #include <QKeyEvent>
-#include <QRandomGenerator>
 #include <QProcess>
 #include <QFile>
 #include <QDir>
 #include <QTextStream>
-#include <QRadialGradient>
 #include <QLinearGradient>
 #include <QFileSystemWatcher>
 
@@ -23,28 +20,7 @@
 #include <iostream>
 
 // ============================================================================
-// STRUCTS
-// ============================================================================
-struct Shockwave {
-    double x, y;
-    double radius;
-    double maxRadius;
-    double alpha;
-    double strokeWidth;
-    QColor color;
-};
-
-struct Sparkle {
-    double x, y;
-    double vx, vy;
-    double size;
-    double alpha;
-    double decay;
-    QColor color;
-};
-
-// ============================================================================
-// PURE FRAMELESS 100% TRANSPARENT AUDIO WAVE CANVAS
+// CLEAN, SMOOTH, PURIFIED AUDIO WAVE CANVAS (ESTILO CAVA LIMPO)
 // ============================================================================
 class OndasVisualizerWidget : public QWidget
 {
@@ -60,7 +36,7 @@ public:
         // Load Wallpaper / Pywal Colors
         loadWallpaperTheme();
 
-        // Watch pywal colors file for real-time wallpaper color changes
+        // Watch pywal colors file
         m_walWatcher = new QFileSystemWatcher(this);
         QString walPath = QDir::homePath() + "/.cache/wal/colors";
         if (QFile::exists(walPath)) {
@@ -68,12 +44,12 @@ public:
             connect(m_walWatcher, &QFileSystemWatcher::fileChanged, this, &OndasVisualizerWidget::loadWallpaperTheme);
         }
 
-        // Animation Loop (~60 FPS)
+        // Animation Timer (~60 FPS)
         m_timer = new QTimer(this);
         connect(m_timer, &QTimer::timeout, this, &OndasVisualizerWidget::updateFrame);
         m_timer->start(16);
 
-        // Launch CAVA System Audio Process
+        // Launch CAVA System Audio listener
         startCavaProcess();
     }
 
@@ -85,7 +61,6 @@ public:
 public slots:
     void loadWallpaperTheme()
     {
-        // 1. Try Pywal wallpaper colors (~/.cache/wal/colors)
         QString walColorsPath = QDir::homePath() + "/.cache/wal/colors";
         QFile file(walColorsPath);
         if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -98,19 +73,17 @@ public slots:
             file.close();
 
             if (lines.size() >= 7) {
-                m_primaryColor   = makeVibrant(QColor(lines[1])); // Neon Main Accent
+                m_primaryColor   = makeVibrant(QColor(lines[1])); // Neon Main
                 m_secondaryColor = makeVibrant(QColor(lines[2])); // Neon Secondary
-                m_glowColor      = makeVibrant(QColor(lines[3])); // Gold / Glow
-                m_accentColor    = makeVibrant(QColor(lines[5])); // Sparkle Highlight
+                m_glowColor      = makeVibrant(QColor(lines[3])); // Gold Accent
                 return;
             }
         }
 
-        // 2. Fallback Ultra-Vibrant Palette
+        // Fallback Palette
         m_primaryColor   = QColor("#00f0ff"); // Electric Cyan
         m_secondaryColor = QColor("#ff007f"); // Hot Neon Pink
         m_glowColor      = QColor("#ffe600"); // Yellow Gold
-        m_accentColor    = QColor("#d946ef"); // Neon Violet
     }
 
 protected:
@@ -123,44 +96,16 @@ protected:
         }
     }
 
-    // Allow clicking and dragging the frameless window anywhere
-    void mousePressEvent(QMouseEvent *event) override
-    {
-        if (event->button() == Qt::LeftButton) {
-            m_dragPosition = event->globalPosition().toPoint() - frameGeometry().topLeft();
-            event->accept();
-        }
-    }
-
-    void mouseMoveEvent(QMouseEvent *event) override
-    {
-        if (event->buttons() & Qt::LeftButton) {
-            move(event->globalPosition().toPoint() - m_dragPosition);
-            event->accept();
-        }
-    }
-
     void paintEvent(QPaintEvent *) override
     {
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
 
-        // 100% TRANSPARENT CANVAS (NO DARK BACKPLATE / NO OVERLAY RECTANGLE)
+        // 100% PURE TRANSPARENT CANVAS (NO BG, NO BOX, NO OVERLAY)
         painter.fillRect(rect(), Qt::transparent);
 
-        painter.save();
-        painter.translate(m_shakeX, m_shakeY);
-
-        // 1. Draw Multi-Layer Glowing Audio Waveforms
+        // Draw Smooth, Clean Audio Waves
         drawAudioWaves(painter);
-
-        // 2. Draw Explosive Bass Shockwaves
-        drawShockwaves(painter);
-
-        // 3. Draw Sparkles
-        drawSparkles(painter);
-
-        painter.restore();
     }
 
 private slots:
@@ -190,53 +135,16 @@ private slots:
 
     void updateFrame()
     {
-        // Fast Attack & Smooth Decay Frequencies
-        m_bassEnergy = 0.0;
-        m_midEnergy = 0.0;
-        m_trebleEnergy = 0.0;
-
+        // Smooth CAVA Monstercat-style exponential decay
         for (int i = 0; i < m_barsCount; ++i) {
             if (m_bands[i] > m_smoothBands[i]) {
-                m_smoothBands[i] = m_bands[i]; // Instant attack
+                m_smoothBands[i] = m_smoothBands[i] * 0.5 + m_bands[i] * 0.5;
             } else {
-                m_smoothBands[i] = m_smoothBands[i] * 0.80 + m_bands[i] * 0.20;
+                m_smoothBands[i] = m_smoothBands[i] * 0.88 + m_bands[i] * 0.12;
             }
-
-            if (i < 8) m_bassEnergy += m_smoothBands[i];
-            else if (i < 30) m_midEnergy += m_smoothBands[i];
-            else m_trebleEnergy += m_smoothBands[i];
         }
 
-        m_bassEnergy /= 8.0;
-        m_midEnergy /= 22.0;
-        m_trebleEnergy /= 18.0;
-
-        // Automatic Bass Peak Burst Detection
-        if (m_bassCooldown > 0) m_bassCooldown--;
-
-        if (m_bassEnergy > 0.38 && m_bassCooldown == 0) {
-            auto *rng = QRandomGenerator::global();
-            double burstX = width() * (0.3 + rng->generateDouble() * 0.4);
-            double burstY = height() * 0.5;
-            triggerExplosiveBurst(burstX, burstY, m_bassEnergy);
-            m_bassCooldown = 12;
-        }
-
-        // Screen Shake Physics on Heavy Bass
-        double shakeMagnitude = std::pow(m_bassEnergy, 2.0) * 32.0;
-        auto *rng = QRandomGenerator::global();
-        m_shakeX = (rng->generateDouble() * 2.0 - 1.0) * shakeMagnitude;
-        m_shakeY = (rng->generateDouble() * 2.0 - 1.0) * shakeMagnitude;
-
-        // High frequency sparkles
-        if (m_trebleEnergy > 0.3 && rng->generateDouble() > 0.4) {
-            spawnSparkle(rng->generateDouble() * width(), rng->generateDouble() * height(), 2);
-        }
-
-        updateShockwaves();
-        updateSparkles();
-
-        m_animTime += 0.03;
+        m_animTime += 0.02;
         update();
     }
 
@@ -245,21 +153,21 @@ private:
     {
         int h, s, v, a;
         col.getHsv(&h, &s, &v, &a);
-        s = std::min(255, static_cast<int>(s * 1.5 + 60));
-        v = std::min(255, static_cast<int>(v * 1.4 + 50));
+        s = std::min(255, static_cast<int>(s * 1.4 + 50));
+        v = std::min(255, static_cast<int>(v * 1.3 + 40));
         return QColor::fromHsv(h < 0 ? 0 : h, s, v, a);
     }
 
     void startCavaProcess()
     {
-        m_cavaConfigFile = QDir::tempPath() + "/aether_cava_pure_waves.conf";
+        m_cavaConfigFile = QDir::tempPath() + "/aether_cava_clean_waves.conf";
         QFile file(m_cavaConfigFile);
         if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             QTextStream out(&file);
             out << "[general]\n"
                 << "bars = 48\n"
                 << "framerate = 60\n"
-                << "sensitivity = 200\n"
+                << "sensitivity = 180\n"
                 << "autosens = 1\n"
                 << "[smoothing]\n"
                 << "integral = 0\n"
@@ -294,77 +202,6 @@ private:
         }
     }
 
-    void triggerExplosiveBurst(double x, double y, double intensity)
-    {
-        Shockwave sw1;
-        sw1.x = x;
-        sw1.y = y;
-        sw1.radius = 10.0;
-        sw1.maxRadius = 240.0 + intensity * 160.0;
-        sw1.alpha = 1.0;
-        sw1.strokeWidth = 4.0;
-        sw1.color = m_secondaryColor;
-        m_shockwaves.push_back(sw1);
-
-        Shockwave sw2;
-        sw2.x = x;
-        sw2.y = y;
-        sw2.radius = 5.0;
-        sw2.maxRadius = 170.0 + intensity * 110.0;
-        sw2.alpha = 0.95;
-        sw2.strokeWidth = 2.5;
-        sw2.color = m_glowColor;
-        m_shockwaves.push_back(sw2);
-
-        spawnSparkle(x, y, static_cast<int>(30 + intensity * 30));
-    }
-
-    void updateShockwaves()
-    {
-        for (auto it = m_shockwaves.begin(); it != m_shockwaves.end();) {
-            it->radius += 8.0 + m_bassEnergy * 12.0;
-            it->alpha -= 0.024;
-            if (it->alpha <= 0.0 || it->radius >= it->maxRadius) {
-                it = m_shockwaves.erase(it);
-            } else {
-                ++it;
-            }
-        }
-    }
-
-    void spawnSparkle(double x, double y, int count)
-    {
-        auto *rng = QRandomGenerator::global();
-        for (int i = 0; i < count; ++i) {
-            Sparkle s;
-            s.x = x;
-            s.y = y;
-            double angle = rng->generateDouble() * M_PI * 2.0;
-            double speed = 1.5 + rng->generateDouble() * (6.0 + m_trebleEnergy * 8.0);
-            s.vx = std::cos(angle) * speed;
-            s.vy = std::sin(angle) * speed;
-            s.size = 2.0 + rng->generateDouble() * 4.5;
-            s.alpha = 1.0;
-            s.decay = 0.02 + rng->generateDouble() * 0.04;
-            s.color = (i % 3 == 0) ? m_glowColor : (i % 3 == 1 ? m_secondaryColor : m_primaryColor);
-            m_sparkles.push_back(s);
-        }
-    }
-
-    void updateSparkles()
-    {
-        for (auto it = m_sparkles.begin(); it != m_sparkles.end();) {
-            it->x += it->vx;
-            it->y += it->vy;
-            it->alpha -= it->decay;
-            if (it->alpha <= 0.0) {
-                it = m_sparkles.erase(it);
-            } else {
-                ++it;
-            }
-        }
-    }
-
     void drawAudioWaves(QPainter &painter)
     {
         int w = width();
@@ -372,12 +209,12 @@ private:
         if (w <= 0 || h <= 0) return;
 
         double centerY = h * 0.50;
-        double maxWaveHeight = h * 0.40;
+        double maxWaveHeight = h * 0.35;
 
         std::vector<QPointF> ptsMain;
         std::vector<QPointF> ptsDashed;
 
-        int numPoints = 80;
+        int numPoints = 75;
         ptsMain.reserve(numPoints + 1);
         ptsDashed.reserve(numPoints + 1);
 
@@ -394,10 +231,10 @@ private:
             }
 
             double bandVal = m_smoothBands[bandIdx];
-            double amp = (0.05 + bandVal * 0.95) * maxWaveHeight;
+            double amp = (0.04 + bandVal * 0.96) * maxWaveHeight;
 
-            double wavePhase1 = std::sin(normX * M_PI * 6.0 + m_animTime * 3.5);
-            double wavePhase2 = std::cos(normX * M_PI * 8.0 - m_animTime * 2.8);
+            double wavePhase1 = std::sin(normX * M_PI * 5.0 + m_animTime * 2.5);
+            double wavePhase2 = std::cos(normX * M_PI * 7.0 - m_animTime * 2.0);
 
             double yMain = centerY - (amp * (0.65 + wavePhase1 * 0.35));
             double yDashed = centerY + (amp * (0.55 + wavePhase2 * 0.30));
@@ -416,33 +253,33 @@ private:
         mainGrad.setColorAt(0.7, m_glowColor);
         mainGrad.setColorAt(1.0, m_secondaryColor);
 
-        // Outer Wide Ambient Bloom Halo
-        QPen glowPen(QBrush(mainGrad), 12.0 + m_bassEnergy * 10.0);
+        // Soft Ambient Bloom Halo
+        QPen glowPen(QBrush(mainGrad), 10.0);
         glowPen.setCapStyle(Qt::RoundCap);
         glowPen.setJoinStyle(Qt::RoundJoin);
         painter.setPen(glowPen);
-        painter.setOpacity(0.38 + m_bassEnergy * 0.35);
+        painter.setOpacity(0.35);
         painter.drawPath(pathMain);
 
-        // Bright Core Stroke
-        QPen corePen(QBrush(mainGrad), 4.0 + m_bassEnergy * 2.5);
+        // Crisp Core Wave Line
+        QPen corePen(QBrush(mainGrad), 3.5);
         corePen.setCapStyle(Qt::RoundCap);
         corePen.setJoinStyle(Qt::RoundJoin);
         painter.setPen(corePen);
         painter.setOpacity(1.0);
         painter.drawPath(pathMain);
 
-        // 3. Secondary Yellow/Gold Dashed Wave Ribbon
+        // 2. Secondary Dashed Echo Ribbon
         QLinearGradient dashGrad(0, 0, w, 0);
         dashGrad.setColorAt(0.0, m_glowColor);
-        dashGrad.setColorAt(0.5, m_accentColor);
+        dashGrad.setColorAt(0.5, m_primaryColor);
         dashGrad.setColorAt(1.0, m_glowColor);
 
-        QPen dashPen(QBrush(dashGrad), 3.2 + m_bassEnergy * 1.8, Qt::DashLine);
+        QPen dashPen(QBrush(dashGrad), 2.8, Qt::DashLine);
         dashPen.setCapStyle(Qt::RoundCap);
         dashPen.setJoinStyle(Qt::RoundJoin);
         painter.setPen(dashPen);
-        painter.setOpacity(0.92);
+        painter.setOpacity(0.85);
         painter.drawPath(pathDashed);
     }
 
@@ -468,63 +305,26 @@ private:
         return path;
     }
 
-    void drawShockwaves(QPainter &painter)
-    {
-        for (const auto &sw : m_shockwaves) {
-            QColor c = sw.color;
-            c.setAlpha(static_cast<int>(sw.alpha * 255));
-            painter.setPen(QPen(c, sw.strokeWidth + sw.alpha * 2.0));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawEllipse(QPointF(sw.x, sw.y), sw.radius, sw.radius);
-        }
-    }
-
-    void drawSparkles(QPainter &painter)
-    {
-        for (const auto &s : m_sparkles) {
-            QColor c = s.color;
-            c.setAlpha(static_cast<int>(s.alpha * 255));
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(c);
-            painter.drawEllipse(QPointF(s.x, s.y), s.size, s.size);
-        }
-    }
-
 private:
     QByteArray m_cavaBuffer;
     QTimer *m_timer = nullptr;
     QFileSystemWatcher *m_walWatcher = nullptr;
-    QPoint m_dragPosition;
     double m_animTime = 0.0;
-    int m_bassCooldown = 0;
 
-    // CAVA Process
     QProcess *m_cavaProcess = nullptr;
     QString m_cavaConfigFile;
 
-    // Frequencies
     int m_barsCount;
     std::vector<double> m_bands;
     std::vector<double> m_smoothBands;
-    double m_bassEnergy = 0.0;
-    double m_midEnergy = 0.0;
-    double m_trebleEnergy = 0.0;
-
-    // Screen Shake
-    double m_shakeX = 0.0;
-    double m_shakeY = 0.0;
-
-    std::vector<Shockwave> m_shockwaves;
-    std::vector<Sparkle> m_sparkles;
 
     QColor m_primaryColor;
     QColor m_secondaryColor;
     QColor m_glowColor;
-    QColor m_accentColor;
 };
 
 // ============================================================================
-// MAIN APPLICATION WINDOW (FRAMELESS & 100% TRANSPARENT)
+// MAIN APPLICATION WINDOW
 // ============================================================================
 class OndasMainWindow : public QWidget
 {
@@ -536,7 +336,7 @@ public:
         setWindowTitle("Ondas Audio Visualizer");
         setWindowFlags(Qt::FramelessWindowHint);
         setAttribute(Qt::WA_TranslucentBackground, true);
-        resize(950, 520);
+        resize(950, 480);
 
         QVBoxLayout *layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
@@ -555,8 +355,8 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
 
-    std::cout << "\n🌊 Ondas Visualizer ativo no terminal (Sem bordas / 100% Transparente)!" << std::endl;
-    std::cout << "🎨 Cores sincronizadas automaticamente com seu Wallpaper (Pywal)." << std::endl;
+    std::cout << "\n🌊 Ondas Visualizer (Limpo, Suave & Transparente - Estilo CAVA)" << std::endl;
+    std::cout << "🎨 Cores sincronizadas com o Wallpaper (Pywal)." << std::endl;
     std::cout << "💡 Pressione 'Q', 'Esc' ou Ctrl+C para encerrar.\n" << std::endl;
 
     OndasMainWindow window;
